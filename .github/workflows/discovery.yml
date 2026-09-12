@@ -1,0 +1,81 @@
+# DISCOVERY workflow. Purpose: make GitHub tell us the exact check-run names it emits for every
+# shape the control repository plants, in ONE pass. Nothing here is verified against an answer key;
+# the output IS the evidence.
+name: discovery
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  checks: write
+  statuses: write
+
+jobs:
+  # U1/U2: a matrix gate. Runs on normal branches (expect expanded leg names); skipped on a
+  # skip-security/ branch (S1 evidence says the skipped form is the BARE job name -- confirm).
+  security-scan:
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'skip-security/') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [codeql, semgrep]
+    steps:
+      - run: echo "scan ${{ matrix.tool }}"
+
+  # U7 ADVERSARIAL (master condition 2): two GENUINELY DISTINCT jobs sharing a name prefix, where
+  # one carries parentheses in its own name. A prefix/paren fold MUST NOT merge these.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "unit"
+  test-integration:
+    name: test (integration)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "integration"
+
+  # U6: a job skipped by a job-level condition. What name, what conclusion?
+  always-skipped:
+    runs-on: ubuntu-latest
+    if: ${{ false }}
+    steps:
+      - run: echo "never"
+
+  # U3/U4: does checks:write / statuses:write actually work against a read-only default token?
+  emitters:
+    runs-on: ubuntu-latest
+    steps:
+      - name: legacy commit status (U4)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -X POST "repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}" \
+            -f state=success -f context=ci/legacy-coverage -f description="legacy ok" || echo "STATUS_POST_FAILED"
+      - name: neutral check run (U3)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.checks.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                name: 'type-check', head_sha: context.payload.pull_request.head.sha,
+                status: 'completed', conclusion: 'neutral',
+              });
+            } catch (e) { core.warning('CHECKS_CREATE_FAILED: ' + e.message); }
+
+  # U8: the permissive aggregator. Stays green while a dependency skips.
+  all-required-checks:
+    name: all required checks passed
+    runs-on: ubuntu-latest
+    needs: [security-scan, test, test-integration]
+    if: ${{ !cancelled() }}
+    steps:
+      - run: |
+          results='${{ join(needs.*.result, ',') }}'
+          echo "deps: ${results}"
+          case "${results}" in
+            *failure*|*cancelled*) echo "a dep failed"; exit 1 ;;
+            *) echo "ok"; exit 0 ;;
+          esac

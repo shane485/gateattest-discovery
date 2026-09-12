@@ -1,0 +1,12 @@
+# U5: a workflow filtered OUT by paths-ignore. The question that matters: on a docs-only PR does
+# this emit NOTHING (true absence -> INTERMITTENT_ABSENCE works) or a "skipped" check run?
+name: paths
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "integration"

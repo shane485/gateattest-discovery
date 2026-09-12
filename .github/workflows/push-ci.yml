@@ -1,0 +1,10 @@
+# U9: a push-triggered gate, later disabled. Does a disabled workflow stop emitting entirely?
+name: push-ci
+on:
+  push:
+    branches: [main]
+jobs:
+  flaky-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "e2e"
